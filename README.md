@@ -1,42 +1,77 @@
 # Recovery
 
-[English](README.en.md)
+English | [中文](README.zh.md)
 
-Recovery 是一个面向普通用户的 DSH Web 急救插件。
+Recovery keeps DSH Web available when an optional profile plugin is missing or fails during startup. It quarantines the failing entry for the current run and adds a **Settings → Recovery** page for diagnosis and deterministic repair.
 
-当某个可选插件被删除、文件损坏或启动报错时，Recovery 会先把它临时隔离，让 DSH Web 和其他正常功能继续启动。进入 **设置 → Recovery** 后，点击 **一键检查与修复** 即可查看问题和修复进度。
+![Recovery settings page](assets/recovery-checks.png)
 
-![Recovery 修复页面](assets/recovery-checks.png)
+## Features
 
-## 可以处理什么
+- Keeps the Web management interface running when an optional plugin package is missing.
+- Isolates an optional plugin that throws during activation.
+- Reports the plugin id, module name, failure category, and whether automatic repair is available.
+- Reinstalls a recorded npm, GitHub, or local dependency from the Web page.
+- Restores the last known working Web profile configuration.
+- Checks Settings, plugin inventory, Agent presets, model providers, and local Host/Origin trust.
+- Backs up profile files before repair and rolls them back when verification fails.
 
-- 插件文件被删除，但配置里仍然保留着它。
-- 插件启动时报错，导致 Web 无法正常打开。
-- 插件列表、Agent 预设或模型提供方加载失败。
-- Web 本机地址出现 Host/Origin 403 错误。
-- Web 配置损坏，并且存在上一次正常配置。
+Recovery does not call a model API. Package restoration may use the network when the recorded source is remote.
 
-Recovery 会先备份当前配置，再尝试恢复插件、修正可安全修正的配置并重新检查。修复失败时会回滚文件，并继续隔离坏插件，不影响其他功能。
+## How it works
 
-## 使用方法
+The Recovery-aware DSH launcher starts the Web management plane before optional profile plugins. Missing or activation-failing optional entries are recorded and skipped for that run. The Recovery plugin reads that diagnosis through the management API and presents repair actions in Settings.
 
-1. 从本仓库的 **Releases** 下载 Recovery 插件包。
-2. 按 DSH 的 GitHub 插件安装方式把它安装到 `web` Profile。
-3. 重新启动 DSH Web。
-4. 打开 **设置 → Recovery → 一键检查与修复**。
+The protected management plane remains fail-fast. Recovery does not hide failures in the Web server, API gateway, Settings service, plugin inventory, or Recovery itself.
 
-所有检查和修复都在本机完成，不调用大模型 API。重新下载 npm 或 GitHub 插件时可能需要网络连接。
+## Compatibility
 
-## 要求
+| DSH build | Status |
+| --- | --- |
+| Recovery development build based on DSH `0.1.1-rc.2` | Verified |
+| Official `@deepseek-ai/dsh@0.1.1-rc.2` | Not supported |
 
-Recovery 需要带有“坏插件启动隔离”支持的 DSH 版本。该能力必须在普通插件开始加载前运行；不支持此能力的旧版 DSH 无法仅靠一个后安装插件恢复已经完全失败的 Web 启动。
+The current official DSH release does not contain the pre-plugin startup isolation or `recovery.scan` / `recovery.repair` management methods. Installing this package on that release cannot recover a failed Web startup.
 
-## 不会做什么
+## Install
 
-- 不删除聊天记录或用户文件。
-- 不修改 API Key。
-- 不猜测插件来源；只有安装记录仍保存原始来源时才会自动重装。
-- 不掩盖 DSH Web 服务器、管理 API 或 Recovery 自身的核心故障。
+On a Recovery-compatible DSH build:
+
+```sh
+dsh plugin --profile web add github:Tangtang232/dsh-recovery#v0.1.0
+```
+
+Restart `dsh web`, then open **Settings → Recovery → Check and repair**.
+
+The repair workflow is entirely in Web. The command above only installs the standard DSH Profile Bundle.
+
+## Repair behavior
+
+1. Read the failures isolated during Web startup.
+2. Back up `package.json`, lockfile, workspace file, and profile patch.
+3. Restore packages only from sources already recorded in the profile manifest.
+4. Retry plugin activation or restore the last healthy profile configuration.
+5. Recheck the management APIs.
+6. Roll back modified files when restoration or verification fails.
+
+An unknown package source is never guessed. A plugin that still fails remains quarantined.
+
+## Package layout
+
+```text
+assets/             Recovery screenshot
+lib/                Ready-to-load DSH bundle
+src/                Web Settings source
+cordis.patch.yml    Profile Bundle patch
+package.json        DSH bundle and client metadata
+```
+
+## Verification
+
+```sh
+node scripts/verify-package.mjs
+pnpm pack --dry-run
+```
 
 ## License
 
